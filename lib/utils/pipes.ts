@@ -148,6 +148,28 @@ function initConsumersForPipe(plugins: PluginDefinition[], pipe: Pipe) {
   }
 }
 
+/**
+ * Drag types a browser adds for its own bookkeeping. They are not web standard,
+ * their values mean nothing to page code, and no consumer can handle them, so
+ * they must not reach the pipe: an unconsumed item warns, and a warning on
+ * every in-page drag would bury the one that matters.
+ *
+ * `chromium/x-drag-id` rides along with any drag started in the page in
+ * Chromium based browsers (Chrome, Edge, Brave, Opera, Electron). Only types
+ * actually observed belong here. Other engines may leak entries of their own,
+ * but add those when someone sees one, not on expectation.
+ *
+ * Note this is about the browser's own types only. `textbit/droppable-id` is
+ * ours and must keep flowing, it is how an internal block move is recognised.
+ */
+const INTERNAL_DRAG_TYPE_PREFIXES = [
+  'chromium/'
+]
+
+function isInternalDragType(type: string): boolean {
+  return INTERNAL_DRAG_TYPE_PREFIXES.some((prefix) => type.startsWith(prefix))
+}
+
 function initPipeForDrop(dt: DataTransfer) {
   const pipe = []
   let handleTextPlain = true
@@ -161,6 +183,13 @@ function initPipeForDrop(dt: DataTransfer) {
 
   for (let i = 0; i < dt.items.length; i++) {
     const item = dt.items[i]
+
+    // Deliberately narrowed to `string` items. The filter matches on the item
+    // type, and for a file that is the file's own MIME type, so restricting it
+    // here makes it impossible for this list to ever discard a real file.
+    if (item.kind === 'string' && isInternalDragType(item.type)) {
+      continue
+    }
 
     if (item.kind === 'file') {
       pipe.push(getFileItem('drop', item))
@@ -195,27 +224,28 @@ function initPipeForDrop(dt: DataTransfer) {
  *   ^
  */
 async function executeAggregatedPipe(editor: Editor, aggregatedPipe: AggregatedPipe, plugins: PluginDefinition[], e: React.DragEvent | React.ChangeEvent, position: number) {
-  if (aggregatedPipe.length) {
-    e.preventDefault()
-    e.stopPropagation()
+  // Unconditional: once an event is routed here textbit owns it, whether or not
+  // any item survived. An empty pipe that falls through reaches slate-react's
+  // own onDrop, which jumps the caret to the drop point.
+  e.preventDefault()
+  e.stopPropagation()
 
-    let offset = 0
-    for (const pipe of aggregatedPipe) {
-      const len = pipe.consumer.length
+  let offset = 0
+  for (const pipe of aggregatedPipe) {
+    const len = pipe.consumer.length
 
-      if (len === 0) {
-        if (pipe.pipe.find((pipeItem) => pipeItem.type === 'textbit/droppable-id')) {
-          moveNode(editor, pipe.pipe[0].input as string, position)
-        } else {
-          const types = pipe.pipe.map((i) => i.type).join(', ')
-          console.warn(`Ignored dropped data/files of type ${types}`)
-        }
-        continue
+    if (len === 0) {
+      if (pipe.pipe.find((pipeItem) => pipeItem.type === 'textbit/droppable-id')) {
+        moveNode(editor, pipe.pipe[0].input as string, position)
+      } else {
+        const types = pipe.pipe.map((i) => i.type).join(', ')
+        console.warn(`Ignored dropped data/files of type ${types}`)
       }
-
-      // FIXME: Should be aynchronous
-      offset += await executePipe(pipe, editor, plugins, position, offset)
+      continue
     }
+
+    // FIXME: Should be aynchronous
+    offset += await executePipe(pipe, editor, plugins, position, offset)
   }
 }
 

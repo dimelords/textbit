@@ -14,17 +14,25 @@ export function pasteToConsumers(editor: Editor, consumers: Consumers, input: Re
   }
 
   return new Promise((resolve) => {
-    void consume({ input, editor }).then((result) => {
-      if (typeof result?.data === 'object' && output === result.type) {
-        insertNodes(editor, result.data as Element)
-        resolve() // It is handled
-      } else if (typeof result?.data === 'string' && output === 'text/plain') {
-        resolve(result?.data) // It is transformed to text, handle it further
-      } else {
-        console.warn(`Unexpected output from consumer when handling paste`, result)
+    consume({ input, editor })
+      .then((result) => {
+        if (typeof result?.data === 'object' && output === result.type) {
+          insertNodes(editor, result.data as Element)
+          resolve() // It is handled
+        } else if (typeof result?.data === 'string' && output === 'text/plain') {
+          resolve(result?.data) // It is transformed to text, handle it further
+        } else {
+          console.warn(`Unexpected output from consumer when handling paste`, result)
+          resolve()
+        }
+      })
+      // Mirror the drop path (executePipeItem in pipes.ts): a throwing consume()
+      // is a handled failure, not an unhandled rejection that leaves the paste
+      // promise unsettled and the caller's continuation never running.
+      .catch((ex: unknown) => {
+        console.warn(ex instanceof Error ? ex.message : String(ex))
         resolve()
-      }
-    })
+      })
   })
 }
 

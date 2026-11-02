@@ -11,7 +11,7 @@ import { useSlateStatic } from 'slate-react'
 import { DragStateProvider } from '../../contexts/DragStateProvider'
 import { PendingDropsProvider } from '../../contexts/PendingDropsProvider'
 import { PresenceOverlay } from '../PresenceOverlay'
-import type { SpellcheckLookupTable } from '../../types'
+import type { SpellcheckLookupTable, SpellingError } from '../../types'
 import { SelectionBoundsDetails } from '../SelectionBoundsDetails'
 import { type AdjacentBlockState } from '../../contexts/AdjacentBlockContext'
 import { AdjacentBlockProvider } from '../../contexts/AdjacentBlockProvider'
@@ -32,6 +32,23 @@ interface TextbitEditableProps {
   style?: React.CSSProperties
   children?: React.ReactNode
   'aria-label'?: string
+  /**
+   * Decides whether a spelling error has been accepted. Called for every error
+   * the spellchecker reported, and a true answer marks the word
+   * `data-spelling-accepted` instead of leaving it to read as a correction.
+   *
+   * This is how an implementor says a word is fine here without the
+   * spellchecker having to agree. Textbit knows nothing about why, only that
+   * the word has been settled.
+   *
+   * Filtering in the onSpellcheck callback instead would not do the same thing:
+   * results are kept per node until that node's text changes, so a word
+   * accepted while reading would keep its old mark until the paragraph is
+   * edited. This runs on render, so the mark changes at once.
+   *
+   * Memoize it, it takes part in the decorate callback's identity.
+   */
+  isSpellingAccepted?: (error: SpellingError) => boolean
 }
 
 export function TextbitEditable(props: TextbitEditableProps) {
@@ -43,7 +60,7 @@ export function TextbitEditable(props: TextbitEditableProps) {
   const [spellingLookupTable, setSpellingLookupTable] = useState<SpellcheckLookupTable>(new Map())
   const [adjacentBlock, setAdjacentBlock] = useState<AdjacentBlockState | null>(null)
   const [blockSelection, setBlockSelection] = useState<BlockSelectionState | null>(null)
-  const { onFocus, onBlur, constraints, autoFocus = false } = props
+  const { onFocus, onBlur, constraints, autoFocus = false, isSpellingAccepted } = props
 
   useEffect(() => {
     editor.allowEdgeWhitespace = constraints?.allowEdgeWhitespace !== false
@@ -130,9 +147,10 @@ export function TextbitEditable(props: TextbitEditableProps) {
       components,
       placeholders,
       placeholder,
-      editorIsEmpty
+      editorIsEmpty,
+      isSpellingAccepted
     )
-  }, [editor, components, placeholders, placeholder, spellingLookupTable, editorIsEmpty])
+  }, [editor, components, placeholders, placeholder, spellingLookupTable, editorIsEmpty, isSpellingAccepted])
 
   const handleBlur = useCallback((e: React.FocusEvent<HTMLDivElement>) => {
     if (constraints?.allowEdgeWhitespace !== false) {

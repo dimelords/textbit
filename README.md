@@ -1008,6 +1008,7 @@ Spelling errors are rendered with data attributes for custom styling:
 |-----------|--------|-------------|
 | `data-spelling-error` | `string` | Unique ID of spelling error. |
 | `data-spelling-level` | `"error" \| "suggestion"` | Severity level. |
+| `data-spelling-accepted` | present or absent | The implementor has accepted the word, see `isSpellingAccepted` below. |
 
 #### CSS Example
 
@@ -1023,7 +1024,43 @@ Spelling errors are rendered with data attributes for custom styling:
 [data-spelling-level="suggestion"] {
   text-decoration-color: #3b82f6;
 }
+
+/* An accepted word is still marked, so it can be seen and taken back, but
+ * should read as settled rather than as something to act on. The rule sits
+ * after the ones above, they match with the same specificity. */
+[data-spelling-error][data-spelling-accepted] {
+  text-decoration-style: dashed;
+  text-decoration-color: #94a3b8;
+}
 ```
+
+#### Accepting a word
+
+A spellchecker flags a word that is right in this document, a name usually.
+`isSpellingAccepted` is how the implementor says so:
+
+```tsx
+<Textbit.Editable
+  isSpellingAccepted={useCallback(
+    (error) => acceptedWords.has(error.text.toLowerCase()),
+    [acceptedWords]
+  )}
+/>
+```
+
+It is called for every error the spellchecker reported, and a true answer marks
+the word `data-spelling-accepted` rather than leaving it to read as a
+correction. Textbit knows nothing about where the decision is kept or who made
+it, only that the word is settled. Memoize the callback, it takes part in the
+decorate callback's identity.
+
+Filtering the words out of what `onSpellcheck` returns does not do the same
+thing: results are kept per node until that node's text changes, so a word
+accepted while reading would keep its old mark until the paragraph is edited.
+`isSpellingAccepted` runs on render, so the mark changes at once.
+
+The spelling hints from `useContextMenuHints` carry `accepted`, so a context
+menu can offer to take an acceptance back instead of offering it again.
 
 #### Tailwind Example
 

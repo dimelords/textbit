@@ -5,6 +5,7 @@ import {
   Underline
 } from './Leafs'
 import { Navigation } from './Navigation'
+import { NonBreakingSpace } from './NonBreakingSpace'
 
 
 export const StandardPlugins = [
@@ -15,5 +16,6 @@ export const StandardPlugins = [
 ]
 
 export const basePlugins = [
-  Navigation
+  Navigation,
+  NonBreakingSpace
 ]

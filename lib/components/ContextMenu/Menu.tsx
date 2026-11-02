@@ -4,6 +4,8 @@ import { useContextMenuHints } from './useContextMenuHints'
 import { ContextMenuHintsContext } from './ContextMenuHintsContext'
 import { useTextbit } from '../../hooks/useTextbit'
 
+const GAP = 8
+
 export function Menu({ children, className }: {
   className?: string
   children?: React.ReactNode
@@ -33,19 +35,21 @@ function Popover({ children, className }: {
 
     const rect = el.getBoundingClientRect()
     const { x, y } = menu.position
-    const gap = 8
 
     let left = x
-    let top = y + gap // Position below by default
+    let top = y + GAP // Position below by default
 
     // Horizontal bounds
-    const maxLeft = window.innerWidth - rect.width - gap
-    left = Math.max(gap, Math.min(left, maxLeft))
+    const maxLeft = window.innerWidth - rect.width - GAP
+    left = Math.max(GAP, Math.min(left, maxLeft))
 
-    // Vertical bounds - flip to below if not enough space above
-    if (top + rect.height > window.innerHeight - gap) {
-      top = y - rect.height - gap
+    // Vertical bounds - flip to above if not enough space below
+    if (top + rect.height > window.innerHeight - GAP) {
+      top = y - rect.height - GAP
     }
+
+    // Fits neither way, pin to the top edge. Max height keeps it inside the viewport.
+    top = Math.max(GAP, top)
 
     el.style.transform = `translate(${left}px, ${top}px)`
   }, [menu?.position])
@@ -74,11 +78,24 @@ function Popover({ children, className }: {
     }
   }, [readOnly, menu?.position, contextMenuContext])
 
-  // Update position when menu appears or position changes
+  // Update position when menu appears, position changes or content resizes
   useEffect(() => {
-    if (!readOnly && menu?.position) {
-      // Use requestAnimationFrame for smooth positioning
+    const el = ref.current
+    if (!el || readOnly || !menu?.position) {
+      return
+    }
+
+    // Use requestAnimationFrame for smooth positioning
+    requestAnimationFrame(updatePosition)
+
+    // Content can load after opening (e.g. spelling suggestions), so re-place on resize
+    const resizeObserver = new ResizeObserver(() => {
       requestAnimationFrame(updatePosition)
+    })
+    resizeObserver.observe(el)
+
+    return () => {
+      resizeObserver.disconnect()
     }
   }, [readOnly, menu?.position, updatePosition])
 
@@ -94,6 +111,8 @@ function Popover({ children, className }: {
         position: 'fixed',
         top: 0,
         left: 0,
+        maxHeight: `calc(100vh - ${GAP * 2}px)`,
+        overflowY: 'auto',
         willChange: 'transform',
         pointerEvents: 'auto',
         zIndex: 9702

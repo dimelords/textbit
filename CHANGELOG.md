@@ -1,5 +1,62 @@
 # @ttab/textbit
 
+## 1.8.0
+
+### Minor Changes
+
+- `Textbit.Editable` takes `isSpellingAccepted`, a predicate asked about every
+  spelling error the spellchecker reported. A true answer marks the word
+  `data-spelling-accepted` rather than leaving it to read as a correction, so an
+  implementor can say a word is fine in this document without the spellchecker
+  having to agree. Textbit knows nothing about where that decision is kept or who
+  made it.
+
+  Filtering the words out of what `onSpellcheck` returns is not the same thing:
+  results are kept per node until that node's text changes, so a word accepted
+  while reading would keep its old mark until the paragraph is edited. This runs
+  on render, so the mark changes at once.
+
+  The spelling hints from `useContextMenuHints` carry `accepted`, so a context
+  menu can offer to take an acceptance back instead of offering it again.
+
+- Ctrl+Shift+Space inserts a non-breaking space, the same shortcut as in Word. It is a base
+  plugin, so it is there whatever plugins the implementor passes. There is no hotkey on
+  macOS, where Option+Space already types a non-breaking space.
+
+### Patch Changes
+
+- A drop carrying nothing but a browser's own drag types no longer falls through
+  to the default drop handling. Skipping those types can leave the pipe empty, a
+  state it could not reach before, and the pipe claimed the event only when it had
+  something to do - so the drop reached slate-react's own handler, which jumps the
+  caret to the drop point. The event is now claimed whenever it is routed into the
+  pipe.
+
+- `ContextMenu.Root` stays inside the viewport. It is capped to the viewport
+  height and scrolls when its content is taller, and it re-places itself when its
+  content changes size, so a menu that grows after opening (e.g. spelling
+  suggestions loaded on demand) flips above the cursor instead of running past
+  the bottom edge.
+
+- Drops no longer warn about the drag types a browser adds for its own
+  bookkeeping. Chromium attaches `chromium/x-drag-id` to any drag started in the
+  page, so every in-page drop logged "Ignored dropped data/files of type
+  chromium/x-drag-id" alongside handling the real payload. Those types are
+  skipped when the pipe is built. A real type that finds no consumer still warns.
+
+- A consumer that throws no longer leaves the paste promise unsettled. The paste
+  path now warns and settles the same way the drop path does, so the caller's
+  continuation runs. On the typing path, where every character goes through the
+  same helper, that means a typed character is inserted as-is instead of being
+  lost when a consumer throws.
+
+- Guards against the @slate-yjs/core delta-reversal defect: the library reverses
+  a remote text event's delta in place, so two editors bound to one shared root
+  apply changes at the wrong offset. The monorepo patches the dependency and a
+  test in textbit fails if the patch stops applying. @slate-yjs/core is a peer
+  dependency, so consumers outside this repository need the same patch on their
+  own @slate-yjs/core@1.0.2 install.
+
 ## 1.7.0
 
 ### Minor Changes

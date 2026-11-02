@@ -42,6 +42,14 @@ function makeEditor(): Editor {
   return editor
 }
 
+function makeEditorWithBlocks(ids: string[]): Editor {
+  const editor = withHistory(createEditor())
+  editor.children = ids.map((id) => (
+    { id, type: 'core/text', class: 'text', properties: {}, children: [{ text: id }] } as unknown as Descendant
+  ))
+  return editor
+}
+
 function dropEvent(type: string, data: string): React.DragEvent {
   return {
     preventDefault: vi.fn(),
@@ -50,6 +58,20 @@ function dropEvent(type: string, data: string): React.DragEvent {
       types: [type],
       items: [{ kind: 'string', type }],
       getData: (t: string) => (t === type ? data : '')
+    }
+  } as unknown as React.DragEvent
+}
+
+// A drop carrying several dataTransfer entries, as a real in-page drag does:
+// the payload plus whatever the browser adds for itself.
+function multiDropEvent(entries: { type: string, data: string }[]): React.DragEvent {
+  return {
+    preventDefault: vi.fn(),
+    stopPropagation: vi.fn(),
+    dataTransfer: {
+      types: entries.map((e) => e.type),
+      items: entries.map((e) => ({ kind: 'string', type: e.type })),
+      getData: (t: string) => entries.find((e) => e.type === t)?.data ?? ''
     }
   } as unknown as React.DragEvent
 }
@@ -63,6 +85,7 @@ const flush = async () => {
 }
 
 const types = (editor: Editor) => editor.children.map((n) => (n as Element).type)
+const blockIds = (editor: Editor) => editor.children.map((n) => (n as Element).id)
 const hasPlaceholder = (editor: Editor) => types(editor).includes('core/loader')
 
 let warnSpy: ReturnType<typeof vi.spyOn>
@@ -75,7 +98,7 @@ afterEach(() => {
 
 describe('pipeFromDrop — document contract (characterization)', () => {
   test('successful consume inserts the result at the drop position', async () => {
-    consumeImpl = () => Promise.resolve({ type: 'test/result', data: resultNode })
+    consumeImpl = () => Promise.resolve({ source: 'drop', type: 'test/result', data: resultNode })
     const editor = makeEditor()
 
     pipeFromDrop(editor, [testConsumerPlugin], dropEvent(DROP_TYPE, 'payload'), 1)
@@ -108,7 +131,7 @@ describe('pipeFromDrop — document contract (characterization)', () => {
   })
 
   test('consume returning the wrong produces type is discarded', async () => {
-    consumeImpl = () => Promise.resolve({ type: 'wrong/type', data: resultNode })
+    consumeImpl = () => Promise.resolve({ source: 'drop', type: 'wrong/type', data: resultNode })
     const editor = makeEditor()
 
     pipeFromDrop(editor, [testConsumerPlugin], dropEvent(DROP_TYPE, 'payload'), 1)
@@ -116,5 +139,69 @@ describe('pipeFromDrop — document contract (characterization)', () => {
 
     expect(types(editor)).toEqual(['core/text'])
     expect(hasPlaceholder(editor)).toBe(false)
+  })
+})
+
+describe('pipeFromDrop - browser internal drag types', () => {
+  test('a drag carrying the browser own entry inserts without warning', async () => {
+    // Chromium attaches chromium/x-drag-id to any drag started in the page, so
+    // an image dropped from the image search used to insert correctly and warn
+    // about the entry alongside it.
+    consumeImpl = () => Promise.resolve({ source: 'drop', type: 'test/result', data: resultNode })
+    const editor = makeEditor()
+
+    pipeFromDrop(editor, [testConsumerPlugin], multiDropEvent([
+      { type: DROP_TYPE, data: 'payload' },
+      { type: 'chromium/x-drag-id', data: '1234' }
+    ]), 1)
+    await flush()
+
+    expect(types(editor)).toEqual(['core/text', 'test/result'])
+    expect(warnSpy).not.toHaveBeenCalled()
+  })
+
+  test('a real type nothing consumes still warns', async () => {
+    // The message earns its place when a user drops something unhandled.
+    const editor = makeEditor()
+
+    pipeFromDrop(editor, [testConsumerPlugin], dropEvent('application/pdf', 'payload'), 1)
+    await flush()
+
+    expect(types(editor)).toEqual(['core/text'])
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('application/pdf'))
+  })
+
+  test('a drop of nothing but the browser own entry warns about neither', async () => {
+    const editor = makeEditor()
+
+    pipeFromDrop(editor, [testConsumerPlugin], dropEvent('chromium/x-drag-id', '1234'), 1)
+    await flush()
+
+    expect(types(editor)).toEqual(['core/text'])
+    expect(warnSpy).not.toHaveBeenCalled()
+  })
+
+  test('a drop of nothing but the browser own entry still prevents the default handling', async () => {
+    const editor = makeEditor()
+    const event = dropEvent('chromium/x-drag-id', '1234')
+
+    pipeFromDrop(editor, [testConsumerPlugin], event, 1)
+    await flush()
+
+    expect(event.preventDefault).toHaveBeenCalled()
+    expect(event.stopPropagation).toHaveBeenCalled()
+  })
+
+  test('an internal block move alongside the browser own entry still moves the block', async () => {
+    const editor = makeEditorWithBlocks(['a', 'b'])
+
+    pipeFromDrop(editor, [testConsumerPlugin], multiDropEvent([
+      { type: 'chromium/x-drag-id', data: '1234' },
+      { type: 'textbit/droppable-id', data: 'a' }
+    ]), 1)
+    await flush()
+
+    expect(blockIds(editor)).toEqual(['b', 'a'])
+    expect(warnSpy).not.toHaveBeenCalled()
   })
 })

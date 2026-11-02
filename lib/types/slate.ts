@@ -82,6 +82,12 @@ export type TextbitText = BaseText & {
 export type TextbitRange = BaseRange & {
   placeholder?: React.ReactNode
   spellingError?: SpellingError
+  /**
+   * The implementor has said this word is fine here. It is still decorated, so
+   * it can be seen and taken back, but as something settled rather than as a
+   * correction to act on. See `Textbit.Editable`'s `isSpellingAccepted`.
+   */
+  spellingAccepted?: boolean
   newline?: boolean
   nonBreakingSpace?: boolean
 }

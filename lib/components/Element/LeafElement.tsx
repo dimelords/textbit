@@ -154,6 +154,9 @@ function MisspelledLeaf(props: RenderLeafProps & { className: string, style: CSS
       className={className}
       data-spelling-error={spellingError?.id || ''}
       data-spelling-level={spellingError?.level || undefined}
+      // Present when the implementor has said the word is fine here, so it can
+      // be styled as settled rather than as a correction, and taken back.
+      data-spelling-accepted={leaf.spellingAccepted ? '' : undefined}
       {...attributes}
     >
       {props.children}

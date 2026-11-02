@@ -1,7 +1,7 @@
 import { Editor, NodeEntry, Node, Text, Element, type Range } from 'slate'
 import { PluginRegistryComponent } from '../contexts/PluginRegistry/lib/types'
 import { PlaceholdersVisibility } from '../contexts/TextbitContext'
-import { SpellcheckLookupTable } from '../types'
+import { SpellcheckLookupTable, type SpellingError } from '../types'
 
 // Non-breaking space (U+00A0). Built from its char code so the source stays
 // ASCII and cannot be confused with a regular space.
@@ -30,7 +30,8 @@ export function getDecorationRanges(
   components: Map<string, PluginRegistryComponent>,
   placeholders?: PlaceholdersVisibility,
   placeholder?: string,
-  editorIsEmpty?: boolean
+  editorIsEmpty?: boolean,
+  isSpellingAccepted?: (error: SpellingError) => boolean
 ): Range[] {
   const [node, path] = nodeEntry
   const ranges: Range[] = []
@@ -45,6 +46,12 @@ export function getDecorationRanges(
       if (spelling?.errors.length) {
         const text = node.text
         spelling.errors.forEach((spellingError) => {
+          // The implementor can say a word is fine here. It is still decorated,
+          // so it can be seen and taken back, but marked as settled rather than
+          // as a correction to act on. See Textbit.Editable's
+          // isSpellingAccepted.
+          const spellingAccepted = isSpellingAccepted?.(spellingError) === true
+
           // Escape special regex characters
           const escapedText = escapeRegExp(spellingError.text)
 
@@ -57,7 +64,8 @@ export function getDecorationRanges(
               ranges.push({
                 anchor: { path, offset: match.index },
                 focus: { path, offset: match.index + spellingError.text.length },
-                spellingError
+                spellingError,
+                spellingAccepted
               })
             }
           })

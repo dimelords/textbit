@@ -14,6 +14,8 @@ export interface ContextMenuHints {
 
 export interface ContextMenuSpellingHints extends SpellingError {
   range?: BaseRange
+  /** The implementor has said this word is fine here. */
+  accepted: boolean
   apply: (replacement: string) => void
 }
 

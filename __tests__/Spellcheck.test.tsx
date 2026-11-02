@@ -286,4 +286,47 @@ describe('Spellcheck', () => {
     const errorElements = container.querySelectorAll('[data-spelling-error]')
     expect(errorElements.length).toBeGreaterThanOrEqual(2)
   })
+
+  test('marks an accepted word as settled and the others as corrections', async () => {
+    // An implementor says a word is fine here. Textbit is told nothing about
+    // why, only that the word is settled, and the mark changes without the text
+    // having to change or the spellchecker having to be asked again.
+    const content: Descendant[] = [
+      {
+        type: 'core/text',
+        class: 'text',
+        id: 'spell-accepted-1',
+        properties: {},
+        children: [{ text: 'This is teh wrld' }]
+      }
+    ]
+
+    const { container } = render(
+      <TextbitRoot
+        value={content}
+        onChange={() => {}}
+        onSpellcheck={mockSpellchecker}
+        spellcheckDebounce={100}
+      >
+        <TextbitEditable isSpellingAccepted={(error) => error.text === 'teh'} />
+      </TextbitRoot>
+    )
+
+    await waitFor(() => {
+      expect(mockSpellchecker).toHaveBeenCalled()
+    }, { timeout: 500 })
+
+    await waitFor(() => {
+      const accepted = Array.from(container.querySelectorAll('[data-spelling-accepted]'))
+        .map((element) => element.textContent)
+      const corrections = Array.from(
+        container.querySelectorAll('[data-spelling-error]:not([data-spelling-accepted])')
+      ).map((element) => element.textContent)
+
+      // Still marked, so it can be seen and taken back, but not as a correction
+      expect(accepted).toEqual(['teh'])
+      expect(corrections).toContain('wrld')
+      expect(corrections).not.toContain('teh')
+    }, { timeout: 500 })
+  })
 })
